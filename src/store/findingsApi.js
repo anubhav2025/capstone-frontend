@@ -4,19 +4,43 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 // Base URL of your backend
 const BASE_URL = "http://localhost:8081";
 
+// 1. Create the standard fetchBaseQuery
+const rawBaseQuery = fetchBaseQuery({
+  baseUrl: BASE_URL,
+  credentials: 'include', // If you are sending cookies
+});
+
+// 2. Wrap it to handle 401 (unauthorized) responses
+const baseQueryWithInterceptor = async (args, api, extraOptions) => {
+  // Send the request first
+  const result = await rawBaseQuery(args, api, extraOptions);
+  // console.log(first)
+
+  // Check for error status
+  if (result.error && result.error.status === 401) {
+    // Option 1: dispatch a logout action if you have one
+    // api.dispatch(logout());
+    api.dispatch(clearUserInfo());
+
+    // Option 2: directly navigate or reload to the login page
+    window.location.href = 'http://localhost:5173/login';
+  }
+
+  return result;
+};
+
+
 export const findingsApi = createApi({
   reducerPath: "findingsApi",
-  baseQuery: fetchBaseQuery({ baseUrl: BASE_URL }),
+  // baseQuery: fetchBaseQuery({ baseUrl: BASE_URL, credentials: 'include' }),
+  baseQuery: baseQueryWithInterceptor,
   endpoints: (builder) => ({
-    // 1) GET /findings with query params
     getFindings: builder.query({
       query: ({ toolType, severity, state, page, size }) => {
-        // Construct query string
         const params = new URLSearchParams();
         if (toolType) params.set("toolType", toolType);
         if (severity) params.set("severity", severity);
         if (state) params.set("state", state);
-        // pagination defaults
         if (page !== undefined) params.set("page", page);
         if (size !== undefined) params.set("size", size);
 
@@ -24,23 +48,38 @@ export const findingsApi = createApi({
       },
     }),
 
-    // 2) POST /scan/publish
     triggerScan: builder.mutation({
-      query: () => ({
+      query: (selectedTools) => ({
         url: "scan/publish",
         method: "POST",
-        // if the endpoint needs a body, provide it here,
-        // but presumably it's empty or has a JSON object
         body: {
           owner: "anubhav2025",
           repository: "juice-shop",
           username: "anubhav2025",
-          tools: ["ALL"],
+          tools: selectedTools
         },
       }),
     }),
+
+    getAlertStatesAndReasons: builder.query({
+      query: () => 'alert/states-reasons'
+    }),
+
+    updateAlertState: builder.mutation({
+      query: (body) => ({
+        url: 'alert/updateState',
+        method: 'POST',
+        body
+      })
+    })
   }),
 });
 
 // Export RTK Query hooks
-export const { useGetFindingsQuery, useTriggerScanMutation } = findingsApi;
+export const { 
+  // useGetFindingsQuery,
+  useLazyGetFindingsQuery,
+  useTriggerScanMutation,
+  useGetAlertStatesAndReasonsQuery,
+  useUpdateAlertStateMutation,
+} = findingsApi;

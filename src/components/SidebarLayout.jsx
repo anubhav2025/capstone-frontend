@@ -1,16 +1,18 @@
 // src/components/SidebarLayout.jsx
 import React, { useState } from "react";
-import { Layout, Menu, Button } from "antd";
-import { HomeOutlined, SettingOutlined, LockOutlined } from "@ant-design/icons";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Layout, Menu } from "antd";
+import {
+  HomeOutlined,
+  SettingOutlined,
+  LockOutlined,
+} from "@ant-design/icons";
+import { useLocation, useNavigate, Outlet } from "react-router-dom"; // <-- import Outlet!
 import ArmorCodeImg from "../assets/armorcode_logo.png";
 import ArmorCodeCollapsedImg from "../assets/armorcode_logo_collapsed.png";
 
-// import "./SidebarLayout.css"; // optional for custom styling
+const { Sider, Content } = Layout;
 
-const { Header, Sider, Content } = Layout;
-
-function SidebarLayout({ children, onScan }) {
+function SidebarLayout({ onScan }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -49,10 +51,8 @@ function SidebarLayout({ children, onScan }) {
               width: collapsed ? "55px" : "150px",
             }}
           />
-
-          {/* Could place a logo next to it, e.g. <img src="logo.png" alt="Armorcode" /> */}
         </div>
-        {/* Some dummy menu items */}
+
         <Menu
           theme="dark"
           mode="inline"
@@ -71,25 +71,14 @@ function SidebarLayout({ children, onScan }) {
         </Menu>
       </Sider>
 
-      {/* Main layout */}
+      {/* Main layout content */}
       <Layout>
-        <Header
-          style={{
-            padding: "0 16px",
-            background: "#fff",
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-          }}
-        >
-          {/* The SCAN button in top-right */}
-          <Button type="primary" onClick={onScan}>
-            Scan
-          </Button>
-        </Header>
+        {/* If you want a header or a button for scanning, you can put it here */}
+        {/* e.g., <Header><Button onClick={onScan}>Scan</Button></Header> */}
 
         <Content style={{ margin: "16px", background: "#fff" }}>
-          {children}
+          {/* Outlet to render child routes */}
+          <Outlet />
         </Content>
       </Layout>
     </Layout>

@@ -1,8 +1,14 @@
 // src/components/FindingDrawer.jsx
-import React from "react";
-import { Drawer, Descriptions, Tag } from "antd";
 
-function FindingDrawer({ visible, onClose, finding }) {
+import React, { useState } from "react";
+import { Drawer, Descriptions, Tag, Button } from "antd";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import StateChangeModal from "./StateChangeModal";  // <-- new file to create
+
+function FindingDrawer({ visible, onClose, finding, toolMetadata, canEdit }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   if (!finding) {
     return null;
   }
@@ -15,13 +21,11 @@ function FindingDrawer({ visible, onClose, finding }) {
     state,
     url,
     toolType,
-    cves,
     cwes,
     cvss,
     filePath,
     componentName,
     componentVersion,
-    type,
     suggestions,
   } = finding;
 
@@ -37,7 +41,13 @@ function FindingDrawer({ visible, onClose, finding }) {
       ? "blue"
       : "green";
 
+  const handleEditState = () => {
+    setIsModalOpen(true);
+  };
+
   return (
+    <>
+    
     <Drawer
       visible={visible}
       onClose={onClose}
@@ -51,7 +61,15 @@ function FindingDrawer({ visible, onClose, finding }) {
         <Descriptions.Item label="Severity">
           <Tag color={severityColor}>{severity}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="State">{state}</Descriptions.Item>
+        <Descriptions.Item label="State">{state} {/* Edit State Button */}
+         {canEdit && (
+          <div style={{ marginTop: 16 }}>
+          <Button type="primary" onClick={handleEditState}>
+            Edit State
+          </Button>
+        </div>
+         )}
+      </Descriptions.Item>
         <Descriptions.Item label="Tool">{toolType}</Descriptions.Item>
         <Descriptions.Item label="File Path">{filePath}</Descriptions.Item>
         <Descriptions.Item label="Component Name">
@@ -61,18 +79,29 @@ function FindingDrawer({ visible, onClose, finding }) {
           {componentVersion}
         </Descriptions.Item>
         <Descriptions.Item label="CVSS">{cvss}</Descriptions.Item>
-        <Descriptions.Item label="CWE">
-          {(cwes || []).join(", ")}
-        </Descriptions.Item>
+        <Descriptions.Item label="CWE">{(cwes || []).join(", ")}</Descriptions.Item>
         <Descriptions.Item label="URL">
           <a href={url} target="_blank" rel="noreferrer">
             {url}
           </a>
         </Descriptions.Item>
-        <Descriptions.Item label="Description">{desc}</Descriptions.Item>
+        <Descriptions.Item label="Description">
+          <ReactMarkdown children={desc} remarkPlugins={[remarkGfm]} />
+        </Descriptions.Item>
         <Descriptions.Item label="Suggestions">{suggestions}</Descriptions.Item>
       </Descriptions>
+
+      
+
+      {/* The modal for state changes */}
+      <StateChangeModal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        finding={finding}
+        toolMetadata={toolMetadata}
+      />
     </Drawer>
+    </>
   );
 }
 

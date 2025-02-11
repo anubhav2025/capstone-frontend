@@ -1,158 +1,305 @@
-// src/pages/FindingsPage.jsx
-import { useState } from "react";
-import { Select, Button, Table } from "antd";
-import { useGetFindingsQuery } from "../store/findingsApi";
-import FindingDrawer from "../components/FindingDrawer";
+import React, { useEffect, useState } from 'react';
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
+import { Select, Button, Table, Pagination, Tag } from 'antd';
+import {
+  useGetAlertStatesAndReasonsQuery,
+  useLazyGetFindingsQuery,
+  useTriggerScanMutation
+} from "../store/findingsApi";
+import PageHeader from '../components/PageHeader';
+import FindingDrawer from '../components/FindingDrawer';
+import { useSelector } from 'react-redux';
 
-const toolOptions = ["DEPENDABOT", "CODE_SCAN", "SECRET_SCAN"];
-const severityOptions = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
-const stateOptions = [
-  "OPEN",
-  "FALSE_POSITIVE",
-  "SUPPRESSED",
-  "FIXED",
-  "CONFIRMED",
-];
+const toolOptions = ['DEPENDABOT', 'CODE_SCAN', 'SECRET_SCAN'];
+const severityOptions = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
+const stateOptions = ['OPEN', 'FALSE_POSITIVE', 'SUPPRESSED', 'FIXED', 'CONFIRMED'];
+
+// Color maps for severity and state
+const severityColorMap = {
+  CRITICAL: 'red',
+  HIGH: 'volcano',
+  MEDIUM: 'orange',
+  LOW: 'green',
+  INFO: 'blue',
+};
+
+const stateColorMap = {
+  OPEN: 'magenta',
+  FALSE_POSITIVE: 'geekblue',
+  SUPPRESSED: 'volcano',
+  FIXED: 'green',
+  CONFIRMED: 'gold',
+};
+
+const severityOrder = {
+  CRITICAL: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+  INFO: 0,
+};
 
 function FindingsPage() {
-  // Filter states
-  const [toolType, setToolType] = useState(null);
-  const [severity, setSeverity] = useState(null);
-  const [status, setStatus] = useState(null);
+  const navigate = useNavigate();
+  const { id: findingIdParam } = useParams();  // e.g. "123abc"
 
-  // Pagination
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Whether the FindingDrawer is open and which finding is selected
+  // Local states, synced with query params
+  const [toolType, setToolType] = useState(searchParams.get('toolType') || null);
+  const [severity, setSeverity] = useState(searchParams.get('severity') || null);
+  const [status, setStatus] = useState(searchParams.get('state') || null);
+
+  const pageQ = parseInt(searchParams.get('page') || '1', 10);
+  const sizeQ = parseInt(searchParams.get('size') || '10', 10);
+  const [page, setPage] = useState(pageQ);
+  const [size, setSize] = useState(sizeQ);
+
+  // =========================
+  // NEW: Tools to scan
+  // =========================
+  // Suppose we allow multiple selection.  We default to ['ALL'] or an empty array.
+  const [scanTools, setScanTools] = useState([]);
+
+  // Drawer states => if findingIdParam is present => drawer open
   const [selectedFinding, setSelectedFinding] = useState(null);
-  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(!!findingIdParam);
 
-  // RTK Query hook
-  const { data, isLoading, refetch } = useGetFindingsQuery({
-    toolType,
-    severity,
-    state: status,
-    page,
-    size,
-  });
-
-  // We'll assume the server returns something like:
-  // { status: "success", findingsCount: number, findings: [...], ... }
+  // Lazy query for fetching findings
+  const [fetchFindings, { data, isLoading }] = useLazyGetFindingsQuery();
   const findings = data?.findings ?? [];
-  const totalCount = data?.findingsCount ?? 0;
+  const totalCount = data?.findingsTotal ?? 0;
+
+  const [triggerScan, { isLoading: scanLoading }] = useTriggerScanMutation();
+  const { data: toolMetadata } = useGetAlertStatesAndReasonsQuery();
+
+  const userInfo = useSelector(state => state.auth.userInfo);
+  var canScan = ["SUPER_ADMIN", "ADMIN"].some(str => userInfo.roles.includes(str));
+  var canEdit = userInfo.roles.includes("SUPER_ADMIN");
+ 
+
+  // Fetch on mount / filters change
+  useEffect(() => {
+    const fetchParams = {
+      toolType: toolType || undefined,
+      severity: severity || undefined,
+      state: status || undefined,
+      page: page - 1, // backend 0-based
+      size
+    };
+    fetchFindings(fetchParams);
+  }, [toolType, severity, status, page, size, fetchFindings]);
+
+  // Sync local filters -> URL query
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (toolType) sp.set('toolType', toolType);
+    if (severity) sp.set('severity', severity);
+    if (status) sp.set('state', status);
+    sp.set('page', page.toString());
+    sp.set('size', size.toString());
+    setSearchParams(sp);
+  }, [toolType, severity, status, page, size, setSearchParams]);
+
+  // If there's a route param => find that finding
+  useEffect(() => {
+    if (findingIdParam) {
+      const found = findings.find(f => f.id.startsWith(findingIdParam));
+      if (found) {
+        setSelectedFinding(found);
+        setDrawerVisible(true);
+      }
+    } else {
+      // no :id => close drawer
+      setDrawerVisible(false);
+      setSelectedFinding(null);
+    }
+  }, [findingIdParam, findings]);
 
   // Table columns
   const columns = [
     {
-      title: "ID",
-      dataIndex: "id",
-      key: "id",
-      render: (text) => text.slice(0, 8), // short id
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      render: (text) => text.slice(0, 8),
+      sorter: (a, b) => a.id.localeCompare(b.id),
+      sortDirections: ['ascend', 'descend'],
     },
     {
-      title: "Title",
-      dataIndex: "title",
-      key: "title",
+      title: 'Title',
+      dataIndex: 'title',
+      key: 'title',
+      sorter: (a, b) => a.title.localeCompare(b.title),
+      sortDirections: ['ascend', 'descend'],
     },
     {
-      title: "Severity",
-      dataIndex: "severity",
-      key: "severity",
+      title: 'Severity',
+      dataIndex: 'severity',
+      key: 'severity',
+      sorter: (a, b) => severityOrder[a.severity] - severityOrder[b.severity],
+      sortDirections: ['ascend', 'descend'],
+      render: (value) => {
+        const color = severityColorMap[value] || 'default';
+        return <Tag color={color}>{value}</Tag>;
+      },
     },
     {
-      title: "State",
-      dataIndex: "state",
-      key: "state",
+      title: 'State',
+      dataIndex: 'state',
+      key: 'state',
+      sorter: (a, b) => a.state.localeCompare(b.state),
+      sortDirections: ['ascend', 'descend'],
+      render: (value) => {
+        const color = stateColorMap[value] || 'default';
+        return <Tag color={color}>{value}</Tag>;
+      },
     },
     {
-      title: "Tool Type",
-      dataIndex: "toolType",
-      key: "toolType",
+      title: 'Tool Type',
+      dataIndex: 'toolType',
+      key: 'toolType',
     },
   ];
 
-  // Handle row click
+  // On row click => navigate => set param to that ID
   const handleRowClick = (record) => {
-    setSelectedFinding(record);
-    setDrawerVisible(true);
+    navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
   };
 
-  // Pagination controls
-  // We only have "previous page" if page > 0, "next page" if findingsCount == size
-  const handlePrevPage = () => {
-    if (page > 0) {
-      setPage(page - 1);
+  // Pagination
+  const onPaginationChange = (newPage, newPageSize) => {
+    setPage(newPage);
+    setSize(newPageSize);
+  };
+
+  // Filter button => reset to page=1
+  const handleFilter = () => {
+    setPage(1);
+  };
+
+  // Trigger scan
+  const handleScan = async () => {
+    try {
+      await triggerScan(scanTools).unwrap(); 
+      // re-fetch after scan if you want
+      fetchFindings({
+        toolType,
+        severity,
+        state: status,
+        page: page - 1,
+        size
+      });
+    } catch (err) {
+      console.error('Scan failed', err);
     }
   };
 
-  const handleNextPage = () => {
-    // If we got fewer than 'size' results, there's no next page
-    if (findings.length === size) {
-      setPage(page + 1);
-    }
+  const handleDrawerClose = () => {
+    // user closes the drawer => navigate back to /findings with same query
+    navigate(`/findings${window.location.search}`);
   };
 
-  const isNextDisabled = findings.length < size;
-  const isPrevDisabled = page === 0;
+  // Options for the multi-select 
+  const scanToolOptions = ['ALL', 'DEPENDABOT', 'CODESCAN', 'SECRETSCAN'];
 
   return (
-    <div style={{ padding: "16px" }}>
-      <h2>Findings</h2>
+    
+    <div style={{ padding: 16 }}>
+      <PageHeader title="Findings" />
 
-      {/* Filters */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
-        <Select
-          placeholder="Tool Type"
-          allowClear
-          style={{ width: 150 }}
-          onChange={(value) => setToolType(value || null)}
-        >
-          {toolOptions.map((option) => (
-            <Select.Option key={option} value={option}>
-              {option}
-            </Select.Option>
-          ))}
-        </Select>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: 16,
+        justifyContent: 'space-between'
+      }}>
+        {/* Left side: filters */}
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Select
+            placeholder="Tool Type"
+            allowClear
+            style={{ width: 150 }}
+            onChange={(value) => setToolType(value || null)}
+            value={toolType || undefined}
+          >
+            {toolOptions.map((option) => (
+              <Select.Option key={option} value={option}>
+                {option}
+              </Select.Option>
+            ))}
+          </Select>
 
-        <Select
-          placeholder="Severity"
-          allowClear
-          style={{ width: 150 }}
-          onChange={(value) => setSeverity(value || null)}
-        >
-          {severityOptions.map((option) => (
-            <Select.Option key={option} value={option}>
-              {option}
-            </Select.Option>
-          ))}
-        </Select>
+          <Select
+            placeholder="Severity"
+            allowClear
+            style={{ width: 150 }}
+            onChange={(value) => setSeverity(value || null)}
+            value={severity || undefined}
+          >
+            {severityOptions.map((option) => (
+              <Select.Option key={option} value={option}>
+                {option}
+              </Select.Option>
+            ))}
+          </Select>
 
-        <Select
-          placeholder="State"
-          allowClear
-          style={{ width: 150 }}
-          onChange={(value) => setStatus(value || null)}
-        >
-          {stateOptions.map((option) => (
-            <Select.Option key={option} value={option}>
-              {option}
-            </Select.Option>
-          ))}
-        </Select>
+          <Select
+            placeholder="State"
+            allowClear
+            style={{ width: 150 }}
+            onChange={(value) => setStatus(value || null)}
+            value={status || undefined}
+          >
+            {stateOptions.map((option) => (
+              <Select.Option key={option} value={option}>
+                {option}
+              </Select.Option>
+            ))}
+          </Select>
 
-        <Button
-          type="primary"
-          onClick={() => {
-            setPage(0);
-            refetch();
-          }}
-        >
-          Filter
-        </Button>
+          <Button onClick={handleFilter}>Filter</Button>
+        </div>
+
+        {/* Right side: scan tools selector + Scan button */}
+        {canScan && (
+          <div style={{ display: 'flex', gap: 10 }}>
+          <Select
+            mode="multiple"
+            placeholder="Select scan tools"
+            style={{ minWidth: 180 }}
+            value={scanTools}
+            onChange={(val) => {
+              // If user chooses "ALL", maybe automatically replace array with just ['ALL'] 
+              // or allow multiple values. It’s up to you how you want "ALL" to behave.
+              if (val.includes('ALL')) {
+                setScanTools(['ALL']);
+              } else {
+                setScanTools(val);
+              }
+            }}
+          >
+            {scanToolOptions.map((opt) => (
+              <Select.Option key={opt} value={opt}>
+                {opt}
+              </Select.Option>
+            ))}
+          </Select>
+
+          <Button
+            type="primary"
+            loading={scanLoading}
+            onClick={handleScan}
+          >
+            Scan
+          </Button>
+        </div>
+        )}
+        
+
+
       </div>
 
-      {/* Table of findings */}
       <Table
         rowKey="id"
         columns={columns}
@@ -162,32 +309,26 @@ function FindingsPage() {
         onRow={(record) => ({
           onClick: () => handleRowClick(record),
         })}
-        style={{ cursor: "pointer" }}
+        style={{ cursor: 'pointer' }}
       />
 
-      {/* Page bar at bottom */}
-      <div
-        style={{
-          marginTop: "16px",
-          display: "flex",
-          gap: "8px",
-          alignItems: "center",
-        }}
-      >
-        <Button disabled={isPrevDisabled} onClick={handlePrevPage}>
-          Prev
-        </Button>
-        <span>Page: {page + 1}</span>
-        <Button disabled={isNextDisabled} onClick={handleNextPage}>
-          Next
-        </Button>
+      <div style={{ marginTop: 16, textAlign: 'right' }}>
+        <Pagination
+          current={page}
+          pageSize={size}
+          total={totalCount}
+          onChange={onPaginationChange}
+          showSizeChanger
+          showQuickJumper
+        />
       </div>
 
-      {/* Drawer for the selected finding */}
       <FindingDrawer
         visible={drawerVisible}
         finding={selectedFinding}
-        onClose={() => setDrawerVisible(false)}
+        onClose={handleDrawerClose}
+        toolMetadata={toolMetadata}
+        canEdit={canEdit}
       />
     </div>
   );
