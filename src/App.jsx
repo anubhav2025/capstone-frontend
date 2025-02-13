@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useEffect } from "react";
-import { Routes, Route, BrowserRouter, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useTriggerScanMutation } from "./store/findingsApi";
 import SidebarLayout from "./components/SidebarLayout";
 import FindingsPage from "./pages/FindingsPage";
@@ -15,14 +15,11 @@ import Navbar from "./components/Navbar";
 import PageNotFound from "./pages/NotFound";
 
 function App() {
-  // For scanning (RTK Mutation)
   const [triggerScan] = useTriggerScanMutation();
-
-  // For fetching user info
   const { data: userInfo } = useGetUserDetailsQuery();
   const dispatch = useDispatch();
 
-  // Save user info to Redux + localStorage (if available)
+  // On mount, store user info
   useEffect(() => {
     if (userInfo) {
       dispatch(setUserInfo(userInfo));
@@ -30,21 +27,14 @@ function App() {
   }, [userInfo, dispatch]);
 
   const handleScan = async () => {
-    try {
-      await triggerScan().unwrap();
-      console.log("Scan triggered successfully");
-    } catch (err) {
-      console.error("Scan trigger failed:", err);
-    }
+    // You can handle a global scan if you wish
+    await triggerScan({ tenantId: "", tools: ["ALL"] });
   };
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Route WITHOUT sidebar layout */}
         <Route path="/login" element={<LoginPage />} />
-
-        {/* Route WITH sidebar layout */}
         <Route element={<SidebarLayout onScan={handleScan} />}>
           <Route
             index

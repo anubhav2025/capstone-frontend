@@ -1,20 +1,23 @@
+// src/pages/FindingsPage.jsx
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
-import { Select, Button, Table, Pagination, Tag } from 'antd';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Select, Button, Table, Pagination, Tag, message } from 'antd';
+import { useSelector } from 'react-redux';
+
 import {
-  useGetAlertStatesAndReasonsQuery,
   useLazyGetFindingsQuery,
-  useTriggerScanMutation
+  useTriggerScanMutation,
+  useGetAlertStatesAndReasonsQuery
 } from "../store/findingsApi";
+
 import PageHeader from '../components/PageHeader';
 import FindingDrawer from '../components/FindingDrawer';
-import { useSelector } from 'react-redux';
 
 const toolOptions = ['DEPENDABOT', 'CODE_SCAN', 'SECRET_SCAN'];
 const severityOptions = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
 const stateOptions = ['OPEN', 'FALSE_POSITIVE', 'SUPPRESSED', 'FIXED', 'CONFIRMED'];
 
-// Color maps for severity and state
+// Example color maps
 const severityColorMap = {
   CRITICAL: 'red',
   HIGH: 'volcano',
@@ -31,21 +34,29 @@ const stateColorMap = {
   CONFIRMED: 'gold',
 };
 
-const severityOrder = {
-  CRITICAL: 4,
-  HIGH: 3,
-  MEDIUM: 2,
-  LOW: 1,
-  INFO: 0,
-};
-
 function FindingsPage() {
   const navigate = useNavigate();
-  const { id: findingIdParam } = useParams();  // e.g. "123abc"
-
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Local states, synced with query params
+  // ADDED/CHANGED FOR MULTI-TENANCY:
+  // We read the currently selected tenant from Redux
+  const currentTenantId = useSelector((state) => state.auth.userInfo.currentTenantId);
+  const userInfo = useSelector(state => state.auth.userInfo);
+
+
+  // 1) find the tenant object for currentTenantId
+const currentTenantObj = userInfo?.tenants?.find(
+  (t) => t.tenantId === userInfo.currentTenantId
+);
+
+// 2) the user’s role in this tenant
+const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
+
+  // Determine user roles => canScan or canEdit
+  const canScan = ["SUPER_ADMIN", "ADMIN"].includes(currentTenantRole);
+  const canEdit = (currentTenantRole === "SUPER_ADMIN");
+
+  // Query param states
   const [toolType, setToolType] = useState(searchParams.get('toolType') || null);
   const [severity, setSeverity] = useState(searchParams.get('severity') || null);
   const [status, setStatus] = useState(searchParams.get('state') || null);
@@ -55,42 +66,30 @@ function FindingsPage() {
   const [page, setPage] = useState(pageQ);
   const [size, setSize] = useState(sizeQ);
 
-  // =========================
-  // NEW: Tools to scan
-  // =========================
-  // Suppose we allow multiple selection.  We default to ['ALL'] or an empty array.
-  const [scanTools, setScanTools] = useState([]);
-
-  // Drawer states => if findingIdParam is present => drawer open
-  const [selectedFinding, setSelectedFinding] = useState(null);
-  const [drawerVisible, setDrawerVisible] = useState(!!findingIdParam);
-
-  // Lazy query for fetching findings
+  // We can fetch data with lazy query
   const [fetchFindings, { data, isLoading }] = useLazyGetFindingsQuery();
-  const findings = data?.findings ?? [];
-  const totalCount = data?.findingsTotal ?? 0;
-
   const [triggerScan, { isLoading: scanLoading }] = useTriggerScanMutation();
   const { data: toolMetadata } = useGetAlertStatesAndReasonsQuery();
 
-  const userInfo = useSelector(state => state.auth.userInfo);
-  var canScan = ["SUPER_ADMIN", "ADMIN"].some(str => userInfo.roles.includes(str));
-  var canEdit = userInfo.roles.includes("SUPER_ADMIN");
- 
+  // local states for scanning
+  const [scanTools, setScanTools] = useState([]);
 
-  // Fetch on mount / filters change
+  // On mount or whenever filters/tenantId changes
   useEffect(() => {
-    const fetchParams = {
-      toolType: toolType || undefined,
-      severity: severity || undefined,
-      state: status || undefined,
-      page: page - 1, // backend 0-based
-      size
-    };
-    fetchFindings(fetchParams);
-  }, [toolType, severity, status, page, size, fetchFindings]);
+    // If no tenantId is selected, we might skip or fallback
+    if (!currentTenantId) return;
 
-  // Sync local filters -> URL query
+    fetchFindings({
+      tenantId: currentTenantId,
+      toolType,
+      severity,
+      state: status,
+      page: page - 1, // 0-based on server
+      size
+    });
+  }, [currentTenantId, toolType, severity, status, page, size, fetchFindings]);
+
+  // Sync to URL
   useEffect(() => {
     const sp = new URLSearchParams();
     if (toolType) sp.set('toolType', toolType);
@@ -101,59 +100,47 @@ function FindingsPage() {
     setSearchParams(sp);
   }, [toolType, severity, status, page, size, setSearchParams]);
 
-  // If there's a route param => find that finding
-  useEffect(() => {
-    if (findingIdParam) {
-      const found = findings.find(f => f.id.startsWith(findingIdParam));
-      if (found) {
-        setSelectedFinding(found);
-        setDrawerVisible(true);
-      }
-    } else {
-      // no :id => close drawer
-      setDrawerVisible(false);
-      setSelectedFinding(null);
-    }
-  }, [findingIdParam, findings]);
+  const findings = data?.findings || [];
+  const totalCount = data?.findingsTotal || 0;
 
-  // Table columns
+  const handleFilter = () => {
+    setPage(1);
+    // triggers the effect => re-fetch
+  };
+
+  const handleRowClick = (record) => {
+    navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
+  };
+
+  const onPaginationChange = (newPage, newPageSize) => {
+    setPage(newPage);
+    setSize(newPageSize);
+  };
+
+  // columns
   const columns = [
     {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
       render: (text) => text.slice(0, 8),
-      sorter: (a, b) => a.id.localeCompare(b.id),
-      sortDirections: ['ascend', 'descend'],
     },
     {
       title: 'Title',
       dataIndex: 'title',
       key: 'title',
-      sorter: (a, b) => a.title.localeCompare(b.title),
-      sortDirections: ['ascend', 'descend'],
     },
     {
       title: 'Severity',
       dataIndex: 'severity',
       key: 'severity',
-      sorter: (a, b) => severityOrder[a.severity] - severityOrder[b.severity],
-      sortDirections: ['ascend', 'descend'],
-      render: (value) => {
-        const color = severityColorMap[value] || 'default';
-        return <Tag color={color}>{value}</Tag>;
-      },
+      render: (value) => <Tag color={severityColorMap[value] || 'default'}>{value}</Tag>,
     },
     {
       title: 'State',
       dataIndex: 'state',
       key: 'state',
-      sorter: (a, b) => a.state.localeCompare(b.state),
-      sortDirections: ['ascend', 'descend'],
-      render: (value) => {
-        const color = stateColorMap[value] || 'default';
-        return <Tag color={color}>{value}</Tag>;
-      },
+      render: (value) => <Tag color={stateColorMap[value] || 'default'}>{value}</Tag>,
     },
     {
       title: 'Tool Type',
@@ -162,28 +149,32 @@ function FindingsPage() {
     },
   ];
 
-  // On row click => navigate => set param to that ID
-  const handleRowClick = (record) => {
-    navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
+  // For the drawer
+  const [selectedFinding, setSelectedFinding] = useState(null);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+
+  const handleDrawerClose = () => {
+    setDrawerVisible(false);
+    setSelectedFinding(null);
+    // remove the /:id from the route => e.g. navigate to /findings
+    navigate(`/findings${window.location.search}`);
   };
 
-  // Pagination
-  const onPaginationChange = (newPage, newPageSize) => {
-    setPage(newPage);
-    setSize(newPageSize);
-  };
-
-  // Filter button => reset to page=1
-  const handleFilter = () => {
-    setPage(1);
-  };
-
-  // Trigger scan
   const handleScan = async () => {
+    if (!currentTenantId) {
+      message.warn("Please select a tenant before scanning.");
+      return;
+    }
     try {
-      await triggerScan(scanTools).unwrap(); 
-      // re-fetch after scan if you want
+      await triggerScan({
+        tenantId: currentTenantId,
+        tools: scanTools.length ? scanTools : ['ALL']
+      }).unwrap();
+      message.success("Scan triggered successfully!");
+
+      // optionally re-fetch
       fetchFindings({
+        tenantId: currentTenantId,
         toolType,
         severity,
         state: status,
@@ -191,20 +182,12 @@ function FindingsPage() {
         size
       });
     } catch (err) {
-      console.error('Scan failed', err);
+      console.error(err);
+      message.error("Scan trigger failed.");
     }
   };
 
-  const handleDrawerClose = () => {
-    // user closes the drawer => navigate back to /findings with same query
-    navigate(`/findings${window.location.search}`);
-  };
-
-  // Options for the multi-select 
-  const scanToolOptions = ['ALL', 'DEPENDABOT', 'CODESCAN', 'SECRETSCAN'];
-
   return (
-    
     <div style={{ padding: 16 }}>
       <PageHeader title="Findings" />
 
@@ -264,40 +247,35 @@ function FindingsPage() {
         {/* Right side: scan tools selector + Scan button */}
         {canScan && (
           <div style={{ display: 'flex', gap: 10 }}>
-          <Select
-            mode="multiple"
-            placeholder="Select scan tools"
-            style={{ minWidth: 180 }}
-            value={scanTools}
-            onChange={(val) => {
-              // If user chooses "ALL", maybe automatically replace array with just ['ALL'] 
-              // or allow multiple values. It’s up to you how you want "ALL" to behave.
-              if (val.includes('ALL')) {
-                setScanTools(['ALL']);
-              } else {
-                setScanTools(val);
-              }
-            }}
-          >
-            {scanToolOptions.map((opt) => (
-              <Select.Option key={opt} value={opt}>
-                {opt}
-              </Select.Option>
-            ))}
-          </Select>
+            <Select
+              mode="multiple"
+              placeholder="Select scan tools"
+              style={{ minWidth: 180 }}
+              value={scanTools}
+              onChange={(val) => {
+                if (val.includes('ALL')) {
+                  setScanTools(['ALL']);
+                } else {
+                  setScanTools(val);
+                }
+              }}
+            >
+              {['ALL','DEPENDABOT','CODESCAN','SECRETSCAN'].map((opt) => (
+                <Select.Option key={opt} value={opt}>
+                  {opt}
+                </Select.Option>
+              ))}
+            </Select>
 
-          <Button
-            type="primary"
-            loading={scanLoading}
-            onClick={handleScan}
-          >
-            Scan
-          </Button>
-        </div>
+            <Button
+              type="primary"
+              loading={scanLoading}
+              onClick={handleScan}
+            >
+              Scan
+            </Button>
+          </div>
         )}
-        
-
-
       </div>
 
       <Table
@@ -307,7 +285,11 @@ function FindingsPage() {
         loading={isLoading}
         pagination={false}
         onRow={(record) => ({
-          onClick: () => handleRowClick(record),
+          onClick: () => {
+            setSelectedFinding(record);
+            setDrawerVisible(true);
+            navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
+          },
         })}
         style={{ cursor: 'pointer' }}
       />

@@ -1,62 +1,52 @@
-// src/features/findingsApi.js
+// src/store/findingsApi.js
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import { clearUserInfo } from "./authSlice";
 
-// Base URL of your backend
 const BASE_URL = "http://localhost:8081";
 
 // 1. Create the standard fetchBaseQuery
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: BASE_URL,
-  credentials: 'include', // If you are sending cookies
+  credentials: 'include',
 });
 
-// 2. Wrap it to handle 401 (unauthorized) responses
+// 2. Wrap it to handle 401 responses
 const baseQueryWithInterceptor = async (args, api, extraOptions) => {
-  // Send the request first
   const result = await rawBaseQuery(args, api, extraOptions);
-  // console.log(first)
-
-  // Check for error status
+  console.log(result)
   if (result.error && result.error.status === 401) {
-    // Option 1: dispatch a logout action if you have one
-    // api.dispatch(logout());
     api.dispatch(clearUserInfo());
-
-    // Option 2: directly navigate or reload to the login page
     window.location.href = 'http://localhost:5173/login';
   }
-
   return result;
 };
 
-
 export const findingsApi = createApi({
   reducerPath: "findingsApi",
-  // baseQuery: fetchBaseQuery({ baseUrl: BASE_URL, credentials: 'include' }),
   baseQuery: baseQueryWithInterceptor,
   endpoints: (builder) => ({
     getFindings: builder.query({
-      query: ({ toolType, severity, state, page, size }) => {
+      // ADDED/CHANGED FOR MULTI-TENANCY:
+      // we accept tenantId, toolType, etc.
+      query: ({ tenantId, toolType, severity, state, page, size }) => {
         const params = new URLSearchParams();
+        if (tenantId) params.set("tenantId", tenantId);
         if (toolType) params.set("toolType", toolType);
         if (severity) params.set("severity", severity);
         if (state) params.set("state", state);
         if (page !== undefined) params.set("page", page);
         if (size !== undefined) params.set("size", size);
-
         return `findings?${params.toString()}`;
       },
     }),
-
+    // For scanning, we can now pass tenantId
     triggerScan: builder.mutation({
-      query: (selectedTools) => ({
-        url: "scan/publish",
+      query: ({ tenantId, tools }) => ({
+        url: `/scan/publish?tenantId=${tenantId}`,
         method: "POST",
         body: {
-          owner: "anubhav2025",
-          repository: "juice-shop",
-          username: "anubhav2025",
-          tools: selectedTools
+          tenantId, 
+          tools,
         },
       }),
     }),
@@ -66,18 +56,29 @@ export const findingsApi = createApi({
     }),
 
     updateAlertState: builder.mutation({
-      query: (body) => ({
-        url: 'alert/updateState',
-        method: 'POST',
-        body
-      })
-    })
+      query: ({ tenantId,     
+        alertNumber: number,
+        newState,
+        reason,
+        toolType }) => {
+        // We'll put tenantId in the query param, and the rest in the body
+        return {
+          url: `/alert/updateState?tenantId=${tenantId}`,
+          method: 'POST',
+          body: {
+            tenantId,     
+            alertNumber: number,
+            newState,
+            reason,
+            toolType
+          }
+        };
+      }
+    }),
   }),
 });
 
-// Export RTK Query hooks
 export const { 
-  // useGetFindingsQuery,
   useLazyGetFindingsQuery,
   useTriggerScanMutation,
   useGetAlertStatesAndReasonsQuery,

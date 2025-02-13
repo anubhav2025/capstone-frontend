@@ -1,54 +1,71 @@
-// src/features/metricsApi.js
+// src/store/metricsApi.js
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { clearUserInfo } from './authSlice';
 
 const BASE_URL = 'http://localhost:8081';
 
-// 1. Create the standard fetchBaseQuery
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: BASE_URL,
-  credentials: 'include', // If you are sending cookies
+  credentials: 'include',
 });
 
-// 2. Wrap it to handle 401 (unauthorized) responses
 const baseQueryWithInterceptor = async (args, api, extraOptions) => {
-  // Send the request first
   const result = await rawBaseQuery(args, api, extraOptions);
-  console.log(result.error)
-
-  // Check for error status
-  if (result.error && result.error.status === 401) {
-    // Option 1: dispatch a logout action if you have one
-    // api.dispatch(logout());
-    api.dispatch(clearUserInfo());
-
-    // Option 2: directly navigate or reload to the login page
-    window.location.href = 'http://localhost:5173/login';
-  }
-
+  console.log(result);
+  // if (result.error && result.error.status === 401) {
+  //   api.dispatch(clearUserInfo());
+  //   window.location.href = 'http://localhost:5173/login';
+  // }
   return result;
 };
 
 export const metricsApi = createApi({
   reducerPath: 'metricsApi',
-  // baseQuery: fetchBaseQuery({ baseUrl: BASE_URL, credentials: 'include' }),
   baseQuery: baseQueryWithInterceptor,
   endpoints: (builder) => ({
+    // ADDED/CHANGED FOR MULTI-TENANCY:
+    // If your backend needs ?tenantId=xxx in these queries, handle similarly:
     getToolDistribution: builder.query({
-      query: () => '/metrics/tool-distribution', // GET
+      query: (currentTenantId) => {
+        let url = '/metrics/tool-distribution';
+        console.log(currentTenantId)
+        if (currentTenantId) {
+          
+          url += `?tenantId=${currentTenantId}`;
+        }
+        return url;
+      },
     }),
     getStateDistribution: builder.query({
-      query: (toolType) => `/metrics/state-distribution?toolType=${toolType}`,
+      query: ({ tenantId, toolType }) => {
+        let url = `/metrics/state-distribution?toolType=${toolType}`;
+        if (tenantId) {
+          url += `&tenantId=${tenantId}`;
+        }
+        return url;
+      },
     }),
     getSeverityDistribution: builder.query({
-      query: (toolType) => `/metrics/severity-distribution?toolType=${toolType}`,
+      query: ({ tenantId, toolType }) => {
+        let url = `/metrics/severity-distribution?toolType=${toolType}`;
+        if (tenantId) {
+          url += `&tenantId=${tenantId}`;
+        }
+        return url;
+      },
     }),
     getCvssHistogram: builder.query({
-        query: () => '/metrics/cvss-histogram'
-      }),
+      query: (tenantId) => {
+        let url = '/metrics/cvss-histogram';
+        if (tenantId) {
+          url += `?tenantId=${tenantId}`;
+        }
+        return url;
+      },
+    }),
     getUserDetails: builder.query({
       query: () => '/user/me',
-    })
+    }),
   }),
 });
 

@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { 
+// src/pages/Dashboard.jsx
+import React, { useMemo } from 'react';
+import { useSelector } from 'react-redux';
+import {
   useGetToolDistributionQuery,
   useGetStateDistributionQuery,
   useGetSeverityDistributionQuery,
@@ -20,40 +22,48 @@ import {
   Legend,
 } from 'recharts';
 
-import { Select, Row, Col, Card, Typography } from 'antd';
+import { Row, Col, Card, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8854d0', '#f5cd79'];
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const userInfo = useSelector((state) => state.auth.userInfo);
+  const tenantId = userInfo?.currentTenantId || "";
 
-  // 1) Tool distribution
-  const { data: toolDistData } = useGetToolDistributionQuery();
-  // Build Pie data
+  // 1) Tool distribution => useGetToolDistributionQuery(tenantId)
+  // If your metricsApi is updated to accept tenantId, do so:
+  const { data: toolDistData } = useGetToolDistributionQuery(tenantId);
+
+  // Build pie data
   const pieData = (toolDistData || []).map(item => ({
     name: item.toolType,
     value: item.count,
   }));
 
-  // Summation of all findings for a quick "KPI"
+  // Summation
   const totalFindings = useMemo(() => {
     return (toolDistData || []).reduce((sum, item) => sum + item.count, 0);
   }, [toolDistData]);
 
-  // On pie slice click => go to findings?toolType=...
+  // On pie slice click => /findings?toolType=...
   const handlePieClick = (sliceData) => {
     navigate(`/findings?toolType=${sliceData.name}`, { replace: false });
   };
 
-  // 2) We have a dropdown for other bar charts
-  const [selectedTool, setSelectedTool] = useState('CODE_SCAN');
-  const { data: stateDistData } = useGetStateDistributionQuery(selectedTool);
-  const { data: severityDistData } = useGetSeverityDistributionQuery(selectedTool);
-  const { data: cvssData } = useGetCvssHistogramQuery();
+  // 2) We also have a "selectedTool" if you want
+  // For example, let's default to "CODE_SCAN"
+  const selectedTool = "CODE_SCAN";
 
-  // Bar data
+  // Then pass { tenantId, toolType: selectedTool }
+  const { data: stateDistData } = useGetStateDistributionQuery({ tenantId, toolType: selectedTool });
+  const { data: severityDistData } = useGetSeverityDistributionQuery({ tenantId, toolType: selectedTool });
+  const { data: cvssData } = useGetCvssHistogramQuery(tenantId); // if your endpoint uses just tenantId
+
+  // Format bar data
   const barStateData = (stateDistData || []).map(d => ({ name: d.state, count: d.count }));
   const barSeverityData = (severityDistData || []).map(d => ({ name: d.severity, count: d.count }));
   const barCvssData = (cvssData || []).map(d => ({
@@ -62,7 +72,7 @@ function DashboardPage() {
     count: d.count,
   }));
 
-  // Handlers for bar clicks
+  // On bar click => navigate
   const handleStateBarClick = (barData) => {
     navigate(`/findings?state=${barData.name}`, { replace: false });
   };
@@ -75,18 +85,14 @@ function DashboardPage() {
     navigate(`/findings?cvssMin=${min}&cvssMax=${max}`, { replace: false });
   };
 
-  // Pie label => show "Name (Value)"
-  const renderCustomLabel = ({ name, value }) => `${name} (${value})`;
-
   return (
     <div style={{ padding: 24 }}>
-      {/* Page Title */}
       <Title level={2} style={{ marginBottom: 0 }}>
         Security Dashboard
       </Title>
       <Text type="secondary">Overview of vulnerabilities, states, and severity</Text>
 
-      {/* KPI Row (example) */}
+      {/* KPI row */}
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={24} sm={12} md={6}>
           <Card bordered={false} style={{ background: '#f1f2f6' }}>
@@ -102,30 +108,9 @@ function DashboardPage() {
             <Title level={3} style={{ margin: 0 }}>{selectedTool}</Title>
           </Card>
         </Col>
-        {/* Add more KPI cards as needed */}
       </Row>
 
-      {/* Header row with the tool select */}
-      <Row style={{ marginTop: 24, marginBottom: 16 }}>
-        <Col xs={24}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Title level={4} style={{ margin: 0 }}>
-              Distribution &amp; Histograms
-            </Title>
-            <Select
-              style={{ width: 200 }}
-              value={selectedTool}
-              onChange={(val) => setSelectedTool(val)}
-            >
-              <Select.Option value="CODE_SCAN">CODE_SCAN</Select.Option>
-              <Select.Option value="DEPENDABOT">DEPENDABOT</Select.Option>
-              <Select.Option value="SECRET_SCAN">SECRET_SCAN</Select.Option>
-            </Select>
-          </div>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         {/* Pie: Tool Distribution */}
         <Col xs={24} md={12}>
           <Card title="Tool Distribution">
@@ -138,8 +123,6 @@ function DashboardPage() {
                     nameKey="name"
                     outerRadius={100}
                     onClick={handlePieClick}
-                    labelLine
-                    label={renderCustomLabel}
                   >
                     {pieData.map((entry, idx) => (
                       <Cell
@@ -161,12 +144,12 @@ function DashboardPage() {
           </Card>
         </Col>
 
-        {/* State Bar */}
+        {/* State Distribution (Bar) */}
         <Col xs={24} md={12}>
           <Card title={`State Distribution (${selectedTool})`}>
             <div style={{ width: '100%', height: 350 }}>
               <ResponsiveContainer>
-                <BarChart data={barStateData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <BarChart data={barStateData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
@@ -183,12 +166,12 @@ function DashboardPage() {
           </Card>
         </Col>
 
-        {/* Severity Bar */}
+        {/* Severity Distribution (Bar) */}
         <Col xs={24} md={12}>
           <Card title={`Severity Distribution (${selectedTool})`}>
             <div style={{ width: '100%', height: 350 }}>
               <ResponsiveContainer>
-                <BarChart data={barSeverityData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <BarChart data={barSeverityData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
@@ -205,12 +188,12 @@ function DashboardPage() {
           </Card>
         </Col>
 
-        {/* CVSS histogram */}
+        {/* CVSS Histogram */}
         <Col xs={24} md={12}>
           <Card title="CVSS Score Histogram">
             <div style={{ width: '100%', height: 350 }}>
               <ResponsiveContainer>
-                <BarChart data={barCvssData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <BarChart data={barCvssData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
@@ -226,6 +209,7 @@ function DashboardPage() {
             </div>
           </Card>
         </Col>
+
       </Row>
     </div>
   );

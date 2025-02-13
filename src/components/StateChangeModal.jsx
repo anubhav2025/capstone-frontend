@@ -1,14 +1,16 @@
 // src/components/StateChangeModal.jsx
-
 import React, { useState, useEffect } from "react";
 import { Modal, Select, Button, message } from "antd";
+import { useSelector } from "react-redux";                // <-- Import from react-redux
 import { useUpdateAlertStateMutation } from "../store/findingsApi";
 
 function StateChangeModal({ open, onClose, finding, toolMetadata }) {
-  // We'll track local user selections
   const [newState, setNewState] = useState("");
   const [reason, setReason] = useState("");
-//   console.log(finding)
+
+  // 1) Access Redux to get the userInfo with currentTenantId
+  const userInfo = useSelector(state => state.auth.userInfo);
+  const tenantId = userInfo?.currentTenantId; // e.g. "T1"
 
   const [updateAlertState, { isLoading }] = useUpdateAlertStateMutation();
 
@@ -16,37 +18,33 @@ function StateChangeModal({ open, onClose, finding, toolMetadata }) {
     return null;
   }
 
-  // The "toolType" => "CODE_SCAN","DEPENDABOT","SECRET_SCAN"
   const toolType = finding.toolType;
-  const metaForTool = toolMetadata[toolType]; // e.g. { states, dismissedReasons } or resolvedReasons
+  const metaForTool = toolMetadata[toolType];
 
-  // If the parser or tool-scheduler stores "owner"/"repo" in toolAdditionalProperties:
-  const number = finding.url.split('/').pop(); 
-  const owner = finding.toolAdditionalProperties?.owner || "anubhav2025";
-  const repo = finding.toolAdditionalProperties?.repository || "juice-shop";
+  // Example: parse alertNumber from the URL or from additional props in the finding
+  const number = finding.url.split("/").pop();
+  // The old approach had owner, repo. Possibly you no longer need them if multi-tenant 
+  // but let's keep them for demonstration if your back-end still needs them.
+  // const owner = finding.toolAdditionalProperties?.owner || "anubhav2025";
+  // const repo = finding.toolAdditionalProperties?.repository || "juice-shop";
 
-  // We also consider how to display reasons. Dependabot/Code => "dismissedReasons"
-  // Secret => "resolvedReasons"
-  let possibleStates = metaForTool.states; // e.g. ["OPEN","DISMISSED"] or ["OPEN","RESOLVED"]
+  let possibleStates = metaForTool.states || [];
   let reasonOptions = [];
   let showReason = false;
 
-  // If user picks "DISMISSED"/"RESOLVED", we show the reason dropdown
+  // If user picks "RESOLVED"/"DISMISSED", show reasons
   if (toolType === "SECRET_SCAN") {
-    // e.g. "resolvedReasons": [...]
-    reasonOptions = metaForTool.resolvedReasons;
+    reasonOptions = metaForTool.resolvedReasons || [];
     if (newState.toLowerCase() === "resolved") {
       showReason = true;
     }
   } else if (toolType === "DEPENDABOT" || toolType === "CODE_SCAN") {
-    // e.g. "dismissedReasons": [...]
-    reasonOptions = metaForTool.dismissedReasons;
+    reasonOptions = metaForTool.dismissedReasons || [];
     if (newState.toLowerCase() === "dismissed") {
       showReason = true;
     }
   }
 
-  // Reset form whenever the modal opens
   useEffect(() => {
     if (open) {
       setNewState("");
@@ -56,26 +54,34 @@ function StateChangeModal({ open, onClose, finding, toolMetadata }) {
 
   const handleOk = async () => {
     try {
-      // Build the request
-      const body = {
-        owner,
-        repo,
-        toolType,     // "CODE_SCAN","DEPENDABOT","SECRET_SCAN"
+      // 2) Build request body
+      const requestBody = {
+        tenantId,
         alertNumber: number,
         newState,
         reason,
+        toolType
       };
-      console.log(body)
 
-      console.log("hello1");
-      await updateAlertState(body).unwrap();
-      console.log("hello2");
+      // 3) call the RTK mutation, passing {tenantId, ...rest}
+      if (!tenantId) {
+        message.error("No tenantId found. Please select a tenant first.");
+        return;
+      }
+
+      await updateAlertState({
+        tenantId,     
+        alertNumber: number,
+        newState,
+        reason,
+        toolType
+      }).unwrap();
 
       message.success("State update triggered successfully!");
       onClose();
     } catch (err) {
       console.error(err);
-      message.error("Failed to update state: " + err);
+      message.error("Failed to update state: " + (err?.data?.error || err?.message));
     }
   };
 
