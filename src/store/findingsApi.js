@@ -44,10 +44,7 @@ export const findingsApi = createApi({
       query: ({ tenantId, tools }) => ({
         url: `/scan/publish?tenantId=${tenantId}`,
         method: "POST",
-        body: {
-          tenantId, 
-          tools,
-        },
+        body: tools
       }),
     }),
 
@@ -60,7 +57,7 @@ export const findingsApi = createApi({
         alertNumber: number,
         newState,
         reason,
-        toolType }) => {
+        toolType, esFindingId }) => {
         // We'll put tenantId in the query param, and the rest in the body
         return {
           url: `/alert/updateState?tenantId=${tenantId}`,
@@ -70,7 +67,8 @@ export const findingsApi = createApi({
             alertNumber: number,
             newState,
             reason,
-            toolType
+            toolType,
+            esFindingId
           }
         };
       }

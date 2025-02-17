@@ -60,7 +60,8 @@ function StateChangeModal({ open, onClose, finding, toolMetadata }) {
         alertNumber: number,
         newState,
         reason,
-        toolType
+        toolType,
+        esFindingId: finding.id
       };
 
       // 3) call the RTK mutation, passing {tenantId, ...rest}
@@ -74,7 +75,8 @@ function StateChangeModal({ open, onClose, finding, toolMetadata }) {
         alertNumber: number,
         newState,
         reason,
-        toolType
+        toolType,
+        esFindingId: finding.id
       }).unwrap();
 
       message.success("State update triggered successfully!");
