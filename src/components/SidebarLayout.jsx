@@ -3,10 +3,11 @@ import React, { useState } from "react";
 import { Layout, Menu } from "antd";
 import {
   HomeOutlined,
-  SettingOutlined,
   LockOutlined,
+  SettingOutlined,
+  FileOutlined, // antd icon for "Tickets"
 } from "@ant-design/icons";
-import { useLocation, useNavigate, Outlet } from "react-router-dom"; // <-- import Outlet!
+import { useLocation, useNavigate, Outlet } from "react-router-dom";
 import ArmorCodeImg from "../assets/armorcode_logo.png";
 import ArmorCodeCollapsedImg from "../assets/armorcode_logo_collapsed.png";
 
@@ -17,6 +18,7 @@ function SidebarLayout({ onScan }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Highlight the current menu item based on pathname
   const selectedKeys = [location.pathname];
 
   const onMenuClick = (item) => {
@@ -25,7 +27,6 @@ function SidebarLayout({ onScan }) {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      {/* Sider for the sidebar */}
       <Sider
         collapsible
         collapsed={collapsed}
@@ -62,22 +63,31 @@ function SidebarLayout({ onScan }) {
           <Menu.Item key="/dashboard" icon={<HomeOutlined />}>
             Dashboard
           </Menu.Item>
+
           <Menu.Item key="/findings" icon={<LockOutlined />}>
             Findings
           </Menu.Item>
+
+          {/* NEW Tickets menu item */}
+          <Menu.Item key="/tickets" icon={<FileOutlined />}>
+            Tickets
+          </Menu.Item>
+
           <Menu.Item key="/settings" icon={<SettingOutlined />}>
             Settings
           </Menu.Item>
         </Menu>
       </Sider>
 
-      {/* Main layout content */}
       <Layout>
-        {/* If you want a header or a button for scanning, you can put it here */}
-        {/* e.g., <Header><Button onClick={onScan}>Scan</Button></Header> */}
+        {/* Optional Header or a button for scanning 
+        <Header style={{ background: "#fff" }}>
+          <Button onClick={onScan}>Scan</Button>
+        </Header> 
+        */}
 
         <Content style={{ margin: "16px", background: "#fff" }}>
-          {/* Outlet to render child routes */}
+          {/* Child routes will render here */}
           <Outlet />
         </Content>
       </Layout>

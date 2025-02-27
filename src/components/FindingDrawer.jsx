@@ -49,7 +49,7 @@ function FindingDrawer({ visible, onClose, finding, toolMetadata, canEdit }) {
     <>
     
     <Drawer
-      visible={visible}
+      open={visible}
       onClose={onClose}
       title="Finding Details"
       placement="right"

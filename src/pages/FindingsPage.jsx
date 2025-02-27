@@ -13,11 +13,15 @@ import {
 import PageHeader from '../components/PageHeader';
 import FindingDrawer from '../components/FindingDrawer';
 
+// New ticket modals
+import CreateTicketModal from '../components/CreateTicketModal';
+// import ViewTicketModal from '../components/SingleTicketModal';
+
+// Filter options
 const toolOptions = ['DEPENDABOT', 'CODE_SCAN', 'SECRET_SCAN'];
 const severityOptions = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
 const stateOptions = ['OPEN', 'FALSE_POSITIVE', 'SUPPRESSED', 'FIXED', 'CONFIRMED'];
 
-// Example color maps
 const severityColorMap = {
   CRITICAL: 'red',
   HIGH: 'volcano',
@@ -38,25 +42,17 @@ function FindingsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // ADDED/CHANGED FOR MULTI-TENANCY:
-  // We read the currently selected tenant from Redux
   const currentTenantId = useSelector((state) => state.auth.userInfo.currentTenantId);
   const userInfo = useSelector(state => state.auth.userInfo);
 
-
-  // 1) find the tenant object for currentTenantId
-const currentTenantObj = userInfo?.tenants?.find(
-  (t) => t.tenantId === userInfo.currentTenantId
-);
-
-// 2) the user’s role in this tenant
-const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
-
-  // Determine user roles => canScan or canEdit
+  // find the tenant object for currentTenantId
+  const currentTenantObj = userInfo?.tenants?.find(
+    (t) => t.tenantId === currentTenantId
+  );
+  const currentTenantRole = currentTenantObj?.role; 
   const canScan = ["SUPER_ADMIN", "ADMIN"].includes(currentTenantRole);
   const canEdit = (currentTenantRole === "SUPER_ADMIN");
 
-  // Query param states
   const [toolType, setToolType] = useState(searchParams.get('toolType') || null);
   const [severity, setSeverity] = useState(searchParams.get('severity') || null);
   const [status, setStatus] = useState(searchParams.get('state') || null);
@@ -66,30 +62,34 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
   const [page, setPage] = useState(pageQ);
   const [size, setSize] = useState(sizeQ);
 
-  // We can fetch data with lazy query
   const [fetchFindings, { data, isLoading }] = useLazyGetFindingsQuery();
   const [triggerScan, { isLoading: scanLoading }] = useTriggerScanMutation();
   const { data: toolMetadata } = useGetAlertStatesAndReasonsQuery();
 
-  // local states for scanning
   const [scanTools, setScanTools] = useState([]);
 
-  // On mount or whenever filters/tenantId changes
-  useEffect(() => {
-    // If no tenantId is selected, we might skip or fallback
-    if (!currentTenantId) return;
+  // Drawer states
+  const [selectedFinding, setSelectedFinding] = useState(null);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
+  // Ticket modals
+  const [showCreateTicketModal, setShowCreateTicketModal] = useState(false);
+  // const [showViewTicketModal, setShowViewTicketModal] = useState(false);
+
+  // Fetch data whenever filters or tenantId changes
+  useEffect(() => {
+    if (!currentTenantId) return;
     fetchFindings({
       tenantId: currentTenantId,
       toolType,
       severity,
       state: status,
-      page: page - 1, // 0-based on server
+      page: page - 1, // server is zero-based
       size
     });
   }, [currentTenantId, toolType, severity, status, page, size, fetchFindings]);
 
-  // Sync to URL
+  // Keep URL in sync
   useEffect(() => {
     const sp = new URLSearchParams();
     if (toolType) sp.set('toolType', toolType);
@@ -105,11 +105,18 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
 
   const handleFilter = () => {
     setPage(1);
-    // triggers the effect => re-fetch
   };
 
   const handleRowClick = (record) => {
+    setSelectedFinding(record);
+    setDrawerVisible(true);
     navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
+  };
+
+  const handleDrawerClose = () => {
+    setDrawerVisible(false);
+    setSelectedFinding(null);
+    navigate(`/findings${window.location.search}`);
   };
 
   const onPaginationChange = (newPage, newPageSize) => {
@@ -117,7 +124,7 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
     setSize(newPageSize);
   };
 
-  // columns
+  // Columns, including the new Ticket column
   const columns = [
     {
       title: 'ID',
@@ -147,18 +154,40 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
       dataIndex: 'toolType',
       key: 'toolType',
     },
+    {
+      title: 'Ticket',
+      dataIndex: 'ticketId',
+      key: 'ticketId',
+      render: (ticketId, record) => {
+        if (!ticketId) {
+          return (
+            <Button
+              type="link"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedFinding(record);
+                setShowCreateTicketModal(true);
+              }}
+            >
+              Create Ticket
+            </Button>
+          );
+        } else {
+          return (
+            <Button
+              type="link"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/tickets/${ticketId}`)
+              }}
+            >
+              View Ticket
+            </Button>
+          );
+        }
+      },
+    },
   ];
-
-  // For the drawer
-  const [selectedFinding, setSelectedFinding] = useState(null);
-  const [drawerVisible, setDrawerVisible] = useState(false);
-
-  const handleDrawerClose = () => {
-    setDrawerVisible(false);
-    setSelectedFinding(null);
-    // remove the /:id from the route => e.g. navigate to /findings
-    navigate(`/findings${window.location.search}`);
-  };
 
   const handleScan = async () => {
     if (!currentTenantId) {
@@ -168,18 +197,17 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
     try {
       await triggerScan({
         tenantId: currentTenantId,
-        tools: scanTools.length ? scanTools : ['ALL']
+        tools: scanTools.length ? scanTools : ["ALL"],
       }).unwrap();
       message.success("Scan triggered successfully!");
-
-      // optionally re-fetch
+      // optionally refetch
       fetchFindings({
         tenantId: currentTenantId,
         toolType,
         severity,
         state: status,
         page: page - 1,
-        size
+        size,
       });
     } catch (err) {
       console.error(err);
@@ -190,14 +218,12 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
   return (
     <div style={{ padding: 16 }}>
       <PageHeader title="Findings" />
-
       <div style={{
         display: 'flex',
         alignItems: 'center',
         marginBottom: 16,
         justifyContent: 'space-between'
       }}>
-        {/* Left side: filters */}
         <div style={{ display: 'flex', gap: '10px' }}>
           <Select
             placeholder="Tool Type"
@@ -244,7 +270,6 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
           <Button onClick={handleFilter}>Filter</Button>
         </div>
 
-        {/* Right side: scan tools selector + Scan button */}
         {canScan && (
           <div style={{ display: 'flex', gap: 10 }}>
             <Select
@@ -253,25 +278,20 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
               style={{ minWidth: 180 }}
               value={scanTools}
               onChange={(val) => {
-                if (val.includes('ALL')) {
-                  setScanTools(['ALL']);
+                if (val.includes("ALL")) {
+                  setScanTools(["ALL"]);
                 } else {
                   setScanTools(val);
                 }
               }}
             >
-              {['ALL','DEPENDABOT','CODESCAN','SECRETSCAN'].map((opt) => (
+              {["ALL", "DEPENDABOT", "CODESCAN", "SECRETSCAN"].map((opt) => (
                 <Select.Option key={opt} value={opt}>
                   {opt}
                 </Select.Option>
               ))}
             </Select>
-
-            <Button
-              type="primary"
-              loading={scanLoading}
-              onClick={handleScan}
-            >
+            <Button type="primary" loading={scanLoading} onClick={handleScan}>
               Scan
             </Button>
           </div>
@@ -285,11 +305,7 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
         loading={isLoading}
         pagination={false}
         onRow={(record) => ({
-          onClick: () => {
-            setSelectedFinding(record);
-            setDrawerVisible(true);
-            navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
-          },
+          onClick: () => handleRowClick(record),
         })}
         style={{ cursor: 'pointer' }}
       />
@@ -312,6 +328,18 @@ const currentTenantRole = currentTenantObj?.role; // e.g. "SUPER_ADMIN"
         toolMetadata={toolMetadata}
         canEdit={canEdit}
       />
+
+      <CreateTicketModal
+        open={showCreateTicketModal}
+        onClose={() => setShowCreateTicketModal(false)}
+        finding={selectedFinding}
+      />
+
+      {/* <ViewTicketModal
+        open={showViewTicketModal}
+        onClose={() => setShowViewTicketModal(false)}
+        finding={selectedFinding}
+      /> */}
     </div>
   );
 }
