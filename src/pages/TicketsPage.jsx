@@ -47,7 +47,17 @@ function TicketsPage() {
   if (!tenantId) {
     return <div>Please select a tenant first.</div>;
   }
-  if (isLoading) return <Spin />;
+  if (isLoading) return (
+    <div
+    style={{
+      display: "flex",
+      height: "80vh",
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+  >
+    <Spin size="large" />
+  </div>);
   if (isError) {
     console.error(error);
     message.error("Failed to fetch tickets.");

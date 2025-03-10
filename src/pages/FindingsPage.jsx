@@ -1,6 +1,6 @@
 // src/pages/FindingsPage.jsx
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { Select, Button, Table, Pagination, Tag, message } from 'antd';
 import { useSelector } from 'react-redux';
 
@@ -15,7 +15,6 @@ import FindingDrawer from '../components/FindingDrawer';
 
 // New ticket modals
 import CreateTicketModal from '../components/CreateTicketModal';
-// import ViewTicketModal from '../components/SingleTicketModal';
 
 // Filter options
 const toolOptions = ['DEPENDABOT', 'CODE_SCAN', 'SECRET_SCAN'];
@@ -41,6 +40,7 @@ const stateColorMap = {
 function FindingsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { id: findingId } = useParams();  // <-- get the :id param from the URL
 
   const currentTenantId = useSelector((state) => state.auth.userInfo.currentTenantId);
   const userInfo = useSelector(state => state.auth.userInfo);
@@ -74,9 +74,8 @@ function FindingsPage() {
 
   // Ticket modals
   const [showCreateTicketModal, setShowCreateTicketModal] = useState(false);
-  // const [showViewTicketModal, setShowViewTicketModal] = useState(false);
 
-  // Fetch data whenever filters or tenantId changes
+  // Fetch data whenever filters or tenantId change
   useEffect(() => {
     if (!currentTenantId) return;
     fetchFindings({
@@ -108,23 +107,41 @@ function FindingsPage() {
   };
 
   const handleRowClick = (record) => {
-    setSelectedFinding(record);
-    setDrawerVisible(true);
-    navigate(`/findings/${record.id.slice(0,8)}${window.location.search}`);
+    navigate(`/findings/${record.id}${window.location.search}`);
   };
 
   const handleDrawerClose = () => {
     setDrawerVisible(false);
     setSelectedFinding(null);
+
+    // Return to just /findings (preserving any querystring if you prefer)
     navigate(`/findings${window.location.search}`);
   };
+
+  // When we have an :id in the URL, open the drawer. If not, close it.
+  // Also find the matching finding from the array.
+  useEffect(() => {
+    if (findingId) {
+      const found = findings.find((f) => f.id === findingId);
+      if (found) {
+        setSelectedFinding(found);
+        setDrawerVisible(true);
+      } else {
+        // If not found in the current list, you might do a single fetch or show an error
+        // For now, we’ll just hide the drawer
+        setDrawerVisible(false);
+      }
+    } else {
+      setDrawerVisible(false);
+      setSelectedFinding(null);
+    }
+  }, [findingId, findings]);
 
   const onPaginationChange = (newPage, newPageSize) => {
     setPage(newPage);
     setSize(newPageSize);
   };
 
-  // Columns, including the new Ticket column
   const columns = [
     {
       title: 'ID',
@@ -200,7 +217,7 @@ function FindingsPage() {
         tools: scanTools.length ? scanTools : ["ALL"],
       }).unwrap();
       message.success("Scan triggered successfully!");
-      // optionally refetch
+      // optionally refetch the list
       fetchFindings({
         tenantId: currentTenantId,
         toolType,
@@ -218,12 +235,14 @@ function FindingsPage() {
   return (
     <div style={{ padding: 16 }}>
       <PageHeader title="Findings" />
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: 16,
-        justifyContent: 'space-between'
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          marginBottom: 16,
+          justifyContent: 'space-between'
+        }}
+      >
         <div style={{ display: 'flex', gap: '10px' }}>
           <Select
             placeholder="Tool Type"
@@ -321,6 +340,7 @@ function FindingsPage() {
         />
       </div>
 
+      {/* The drawer for viewing a single finding */}
       <FindingDrawer
         visible={drawerVisible}
         finding={selectedFinding}
@@ -329,17 +349,12 @@ function FindingsPage() {
         canEdit={canEdit}
       />
 
+      {/* Modal for ticket creation */}
       <CreateTicketModal
         open={showCreateTicketModal}
         onClose={() => setShowCreateTicketModal(false)}
         finding={selectedFinding}
       />
-
-      {/* <ViewTicketModal
-        open={showViewTicketModal}
-        onClose={() => setShowViewTicketModal(false)}
-        finding={selectedFinding}
-      /> */}
     </div>
   );
 }

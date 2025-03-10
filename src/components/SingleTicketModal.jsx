@@ -19,7 +19,16 @@ function SingleTicketModal({ open, onClose, ticket, loading, onMarkDone, isUpdat
       width={600}
     >
       {loading ? (
-        <Spin />
+        <div
+        style={{
+          display: "flex",
+          height: "150px",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Spin size="large" />
+      </div>
       ) : !ticket ? (
         <div>No ticket data found.</div>
       ) : (

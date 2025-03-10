@@ -13,6 +13,7 @@ import Navbar from "./components/Navbar";
 import { useGetUserDetailsQuery } from "./store/metricsApi";
 import { setUserInfo } from "./store/authSlice";
 import { useDispatch } from "react-redux";
+import RunbooksPage from "./pages/RunbooksPage";
 
 function App() {
   const { data: userInfo } = useGetUserDetailsQuery();
@@ -85,6 +86,15 @@ function App() {
           <Route path="/tickets" element={<><Navbar /><TicketsPage/></>}>
             <Route path=":ticketId"  />
           </Route>
+          <Route
+            path="/runbooks"
+            element={
+              <>
+                <Navbar />
+                <RunbooksPage />
+              </>
+            }
+          />
 
         </Route>
 

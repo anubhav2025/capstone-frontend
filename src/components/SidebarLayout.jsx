@@ -4,8 +4,9 @@ import { Layout, Menu } from "antd";
 import {
   HomeOutlined,
   LockOutlined,
-  SettingOutlined,
-  FileOutlined, // antd icon for "Tickets"
+  FileOutlined,       // For "Tickets"
+  BookOutlined,       // New icon for "Runbooks"
+  UserOutlined,       // Icon for "Profile"
 } from "@ant-design/icons";
 import { useLocation, useNavigate, Outlet } from "react-router-dom";
 import ArmorCodeImg from "../assets/armorcode_logo.png";
@@ -68,13 +69,18 @@ function SidebarLayout({ onScan }) {
             Findings
           </Menu.Item>
 
-          {/* NEW Tickets menu item */}
           <Menu.Item key="/tickets" icon={<FileOutlined />}>
             Tickets
           </Menu.Item>
 
-          <Menu.Item key="/settings" icon={<SettingOutlined />}>
-            Settings
+          {/* Change Runbooks icon to BookOutlined */}
+          <Menu.Item key="/runbooks" icon={<BookOutlined />}>
+            Runbooks
+          </Menu.Item>
+
+          {/* Remove Settings and add Profile */}
+          <Menu.Item key="/profile" icon={<UserOutlined />}>
+            Profile
           </Menu.Item>
         </Menu>
       </Sider>
